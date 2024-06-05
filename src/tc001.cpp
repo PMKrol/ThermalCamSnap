@@ -1,3 +1,8 @@
+char startTime[256];
+int frame_cnt = 0;
+int cont_snap = 0;
+#include <fstream>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -211,6 +216,15 @@ void getScreenResolution( int &width, int &height ) {
 	}
 }
 #endif
+
+void startTimeString(){
+	struct tm * timeinfo;
+	time_t rawtime;
+	time (&rawtime);
+	timeinfo = localtime (&rawtime);
+
+	strftime (startTime, sizeof(startTime), "%Y-%m-%d_%H%M%S", timeinfo);
+}
 
 #if BORDER_LAYOUT
 static Mat borderFrame;
@@ -3031,6 +3045,75 @@ FILE * readRawFrame(Mat &frame, const char *filename, FILE *fp, int keepOpen, lo
 	return fp;
 }
 
+//modified version (overloaded) for constant snaps
+void snapshot( Mat *frame, const char *prefix, ProcessedThermalFrame *ptf) {
+
+	//size_t strftime (char* ptr, size_t maxsize, const char* format, const struct tm* timeptr );
+	time_t rawtime;
+	struct tm * timeinfo;
+	char now [128];
+#define FN_SIZE 256
+	char filename[FN_SIZE];
+	char rawname[FN_SIZE];
+	char txtname[FN_SIZE];
+
+	char txt_info[FN_SIZE];
+
+	time (&rawtime);
+	timeinfo = localtime (&rawtime);
+
+	strftime (now, sizeof(now), "%Y%m%d-%H%M%S", timeinfo);
+	strftime (controls.snaptime, sizeof(controls.snaptime), "%H:%M:%S", timeinfo);
+
+	if ( validatePrefix( prefix ) ) {
+#define MAX_PREFIX (FN_SIZE - (sizeof(".png") + 1))
+		// Make RPi compiler happy
+		strncpy( filename, prefix, MAX_PREFIX );
+		strncpy( rawname,  prefix, MAX_PREFIX );
+		filename[ MAX_PREFIX ] = 0x00;
+		rawname[  MAX_PREFIX ] = 0x00;
+		strcat( filename, ".png");
+		strcat( rawname,  ".raw");
+	} else {
+		// struct timeval tmnow;
+		// char usec_buf[6]="00000";
+		// //gettimeofday(&tmnow, NULL);
+		// //sprintf(usec_buf,"%dZ",(int)tmnow.tv_usec);
+		// sprintf(usec_buf, "%dZ", frame_cnt++);
+  //
+		// sprintf(filename, "%s/TC001%s.%s.png", startTime
+		// , now, usec_buf);
+		// sprintf(rawname,  "%s/TC001%s.%s.raw", startTime, now, usec_buf);
+
+		char cnt_str[6]="00000";
+		int64_t ct = currentTimeMillis();
+
+		sprintf(cnt_str, "%05d", frame_cnt++);
+
+		sprintf(txt_info,
+				"Avg [C]: %3.2f\nMax [C]: %3.2f\nMin [C]: %3.2f\nContrast: %3.2f\nScale: %d\nMap: %s\nBlur: %d\nTime: %ld\n",
+				ptf->avg.celsius, ptf->max.celsius, ptf->min.celsius, controls.alpha, MyScale, cmaps[controls.cmapCurrent]->name, controls.rad, ct);
+
+		sprintf(filename, "%s/F%s.png", startTime, cnt_str);
+		sprintf(rawname,  "%s/F%s.tc0", startTime, cnt_str);
+		sprintf(txtname,  "%s/F%s.txt", startTime, cnt_str);
+
+	}
+
+	//printf("%s", GREEN_STR() );
+	//now(20231115-010012), filename(TC00120231115-010012.png), snaptime(01:00:12)
+	//printf("\nnow(%s), filename(%s), snaptime(%s)\n\n", now,filename,controls.snaptime);
+	//printf("%s", RESET_STR() );
+
+	ofstream str (txtname, ios::out | ios::app);
+	//str.open(txtname);
+	str << txt_info;
+	str.close();
+
+	imwrite(filename, *frame);
+	writeRawFrame( *threadData.rawFrame, rawname, 0, 0 );
+
+}
 
 void snapshot( Mat *frame, const char *prefix ) {
 
@@ -3095,7 +3178,7 @@ void printUsage() {
   printf("\n");
   printf( "Camera Usage: \n\t%s -d n (where 'n' is the number of the desired video camera)\n\n", Argv0 );
   printf( "Offline Usage: \n\t%s -f input.raw (where input.raw is a raw dump file from %s)\n\n", Argv0, Argv0 );
-  printf( "Optional flags:  [-rotate n] [-scale n] [-fullscreen ] [-cmap n] [-fps n] [-font n] [-clip n] [-thick n]\n");
+  printf( "Optional flags:  [-rotate n] [-scale n] [-fullscreen ] [-cmap n] [-fps n] [-font n] [-clip n] [-thick n] [-contSnap]\n");
 #if 0
   printf( "                 [-help] [-quiet] [-snapshot [prefix]] [-record [prefix]]\n\n");
 #else
@@ -4993,6 +5076,10 @@ int parseArgs( int argc, char *argv[], char *camera, VideoCapture &cap, Processe
 		} else if ( ! strcmp( argv[i], "-quiet") ||
 			    ! strcmp( argv[i], "-q") ) {
 			quietStdout = 1;
+		} else if ( ! strcmp( argv[i], "-contSnap")) {
+			cont_snap = 1;
+			startTimeString();
+			mkdir(startTime, 0777);
 		} else if ( ! strcmp( argv[i], "-snapshot") ) {
 			takeSnapshot = 1;
 			if ( hasNext && validatePrefix( argv[ next ]) ) {
@@ -5618,6 +5705,10 @@ int mainPrivate (int argc, char *argv[]) {
 			goto SHUTDOWN;
 		}
 
+		if(cont_snap){
+			snapshot( &rgbFrame, snapshotPrefix, &ptf_struct );
+		}
+
 		TS( int64_t imshowMicros = currentTimeMicros(); )
 
 #if BORDER_LAYOUT
@@ -5869,7 +5960,6 @@ SHUTDOWN:
 
 	return 0;
 }
-
 
 int main (int argc, char *argv[]) {
 	initStartMicros();
