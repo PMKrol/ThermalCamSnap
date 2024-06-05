@@ -1,7 +1,9 @@
-github.com/92es/Thermal-Camera-Redux fork with continous snap option. Originaly built for Topdon TC001 (and clone) thermal camera app to read and display live and offline thermal data. Works with MaAnt Super IR Cam. 
+github.com/92es/Thermal-Camera-Redux fork with continous snap option. 
+Originaly built for Topdon TC001 (and clone) thermal camera app to read and display live and offline thermal data. 
+Works with MaAnt Super IR Cam. 
 
 This is made to continously save camera frames to file along with raw data (tc0) and TXT file containing some informations for further use (eg. max/min temp, contrast).
-
+Build by running build_tcs, and then ie. ./tcs -d 0 -contSnap
 
 
 ==================== Original README ========================
