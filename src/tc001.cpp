@@ -1,6 +1,7 @@
 char startTime[256];
 int frame_cnt = 0;
 int cont_snap = 0;
+int vOnly = 0;
 #include <fstream>
 
 #include <stdio.h>
@@ -1684,7 +1685,17 @@ void resetDefaults() {
 
 	resetLockAutoRanging();
 
+#if BORDER_LAYOUT
+	controls.hud          = HUD_ONLY_VIDEO;
+#else
 	controls.hud          = HUD_HUD;
+#endif
+
+	// if(vOnly){
+	// 	controls.hud          = HUD_ONLY_VIDEO;
+	// }else{
+	// 	controls.hud          = HUD_HUD;
+	// }
 
 	controls.inters       = 2; // INTER_CUBIC
 	controls.useCelsius   = Use_Celsius = USE_CELSIUS;
@@ -5080,6 +5091,8 @@ int parseArgs( int argc, char *argv[], char *camera, VideoCapture &cap, Processe
 			cont_snap = 1;
 			startTimeString();
 			mkdir(startTime, 0777);
+//		} else if ( ! strcmp( argv[i], "-videoOnly")) {
+//			vOnly = 1;
 		} else if ( ! strcmp( argv[i], "-snapshot") ) {
 			takeSnapshot = 1;
 			if ( hasNext && validatePrefix( argv[ next ]) ) {
@@ -5633,8 +5646,22 @@ int mainPrivate (int argc, char *argv[]) {
 
 			// THREAD LOAD BALANCING - Prepare scaled, pre-processed offscreen rendering areas
 
+			// THREAD LOAD BALANCING - Pre-render HELP into its own RBG image
+			if ( HUD_HELP == controls.hud ) {
+				// OPTIMIZATION: Only needs to be drawn once per scale change and HUD_HELP display
+				if ( MyScale != controls.lastHelpScale ) {
+					osdROI.width  = min( HelpWidth,  SCALED_TC_WIDTH );
+					osdROI.height = min( HelpHeight, SCALED_TC_HEIGHT );
+					threadData.rgbHUD = threadData.maxRgbHud( osdROI ); // Reuse memory
+					drawHelp( threadData.rgbHUD );
+				}
+			} else
 			// THREAD LOAD BALANCING - Pre-render HUD into its own RBG image
+#if BORDER_LAYOUT
+				{
+#else
 			if ( HUD_HUD == controls.hud ) {
+#endif
 				controls.lastHelpScale = -1; // trigger Help to be redrawn
 				osdROI.width  = min( HudWidth,  SCALED_TC_WIDTH  );
 				osdROI.height = min( HudHeight, SCALED_TC_HEIGHT );
@@ -5643,17 +5670,6 @@ int mainPrivate (int argc, char *argv[]) {
 				if ( threadData.configurationChanged || (0 == (controls.frameCounter % (int)NATIVE_FPS)) ) {
 					// Text rendering is expensive because it is rendered twice for background shadow
 					drawHUD( ptf, threadData.rgbHUD, threadData.source, (threadData.lostVideo ? RED: YELLOW) );
-				}
-			}
-
-			// THREAD LOAD BALANCING - Pre-render HELP into its own RBG image
-			else if ( HUD_HELP == controls.hud ) {
-				// OPTIMIZATION: Only needs to be drawn once per scale change and HUD_HELP display
-				if ( MyScale != controls.lastHelpScale ) {
-					osdROI.width  = min( HelpWidth,  SCALED_TC_WIDTH );
-					osdROI.height = min( HelpHeight, SCALED_TC_HEIGHT );
-					threadData.rgbHUD = threadData.maxRgbHud( osdROI ); // Reuse memory
-					drawHelp( threadData.rgbHUD );
 				}
 			}
 
@@ -5697,18 +5713,6 @@ int mainPrivate (int argc, char *argv[]) {
 
 //printf("%s(%d) - Parallel worker threads finished %ld\n", __func__, __LINE__, currentTimeMicros()); FF();
 
-		if ( takeSnapshot ) {
-			printf("%s", GREEN_STR() );
-			printf("\nTaking snapshot and exiting\n");
-			snapshot( &rgbFrame, snapshotPrefix ); // Snapshot
-			printf("%s", RESET_STR() );
-			goto SHUTDOWN;
-		}
-
-		if(cont_snap){
-			snapshot( &rgbFrame, snapshotPrefix, &ptf_struct );
-		}
-
 		TS( int64_t imshowMicros = currentTimeMicros(); )
 
 #if BORDER_LAYOUT
@@ -5735,7 +5739,7 @@ int mainPrivate (int argc, char *argv[]) {
 
 				addWeighted( frameROI, 1-HUD_ALPHA, threadData.rgbHUD, HUD_ALPHA, 0.0, frameROI );
 
-			} else if ( HUD_HUD == controls.hud ) {
+			} else /*if ( HUD_HUD == controls.hud )*/ {
 				// Make HUD translucent
 				// Alpha blended HUD is CPU intensive, use smallest rectangle possible
 				roi.x = roi.y = 0;
@@ -5748,7 +5752,7 @@ int mainPrivate (int argc, char *argv[]) {
 				addWeighted( frameROI, 1-HUD_ALPHA, threadData.rgbHUD, HUD_ALPHA, 0.0, frameROI );
 			}
 
-			if ( HUD_ONLY_VIDEO != controls.hud ) {
+			//if ( HUD_ONLY_VIDEO != controls.hud ) {
 				{ // Draw opaque Colormap Gradient Scale
 					// Reversed from Mat cmapScale(width,height)
 					if ( ( 0 < rightBorderWidth ) || 
@@ -5780,7 +5784,7 @@ int mainPrivate (int argc, char *argv[]) {
 				drawTempMarker( borderFrame, ptf->chLevelPixel,
 						((kTmp < minusThresholdKelvin) ? RULER_MIN_COLOR :
 						 (kTmp > plusThresholdKelvin)  ? RULER_MAX_COLOR : RULER_MID_COLOR) );
-			}
+			//}
 
 			pthread_mutex_unlock( &videoOutMutex );
 
@@ -5867,6 +5871,36 @@ int mainPrivate (int argc, char *argv[]) {
 		// Use following sleepMicros() to throttle FPS
 		int c = (char)waitKeyEx( 1 );
 #endif
+
+
+		if ( takeSnapshot ) {
+				printf("%s", GREEN_STR() );
+				printf("\nTaking snapshot and exiting\n");
+#if BORDER_LAYOUT
+				snapshot( &borderFrame, snapshotPrefix ); // Snapshot
+#else
+				snapshot( &rgbFrame, snapshotPrefix ); // Snapshot
+#endif
+				printf("%s", RESET_STR() );
+				goto SHUTDOWN;
+		}
+
+		/*if ( takeSnapshot ) {
+			printf("%s", GREEN_STR() );
+			printf("\nTaking snapshot and exiting\n");
+			snapshot( &rgbFrame, snapshotPrefix ); // Snapshot
+			printf("%s", RESET_STR() );
+			goto SHUTDOWN;
+		}*/
+
+		if(cont_snap){
+#if BORDER_LAYOUT
+			snapshot( &borderFrame, snapshotPrefix, &ptf_struct  ); // Snapshot
+#else
+			snapshot( &rgbFrame, snapshotPrefix, &ptf_struct  ); // Snapshot
+#endif
+			//snapshot( &rgbFrame, snapshotPrefix, &ptf_struct );
+		}
 
 #if 0
 		if ( takeRecording ) {
