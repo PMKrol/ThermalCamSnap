@@ -1,7 +1,7 @@
 char startTime[256];
 int frame_cnt = 0;
 int cont_snap = 0;
-int vOnly = 0;
+//int vOnly = 0;
 #include <fstream>
 
 #include <stdio.h>
