@@ -1,3 +1,5 @@
+# TCS by P. M. Król orcid.org/0000-0002-9962-0837
+
 github.com/92es/Thermal-Camera-Redux fork with continous snap option. 
 Originaly built for Topdon TC001 (and clone) thermal camera app to read and display live and offline thermal data. 
 Works with MaAnt Super IR Cam. 
@@ -5,6 +7,12 @@ Works with MaAnt Super IR Cam.
 This is made to continously save camera frames to file along with raw data (tc0) and TXT file containing some informations for further use (eg. max/min temp, contrast).
 Build by running build_tcs, and then ie. ./tcs -d 0 -contSnap
 
+Building flags are changed to:
+DEFAULT_FLAGS='-DBORDER_LAYOUT=1 -DDEFAULT_FONT=0 -DDEFAULT_COLORMAP=37 -DROTATION=0 -DDISPLAY_WIDTH=500 -DDISPLAY_HEIGHT=192 -DUSE_CELSIUS=1 -DHUD_ALPHA=1'
+So it uses Bone colormap in border layout. So it will be easier to OpenCV analyze images in future.
+In border layout default behavior is HUD_ONLY_VIDEO so no crosses or numbers on video images, also HUD and scale does not hide (they are NEXT to image).
+
+See https://github.com/92es/Thermal-Camera-Redux/issues/7 
 
 ==================== Original README ========================
 
