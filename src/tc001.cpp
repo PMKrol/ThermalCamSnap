@@ -25,6 +25,9 @@ int cont_snap = 0;
 using namespace std;
 using namespace cv;
 
+//for creating folder
+#include <opencv2/core/utils/filesystem.hpp>
+
 #include "thread.h" // threads and FIFO ring buffer
 
 #define VERSION_STR "0.9.3"
@@ -254,6 +257,17 @@ static int takeSnapshot     = 0;
 static int takeRecording    = 0;
 const char *snapshotPrefix  = "";
 const char *recordingPrefix = "";
+
+/* 5102:
+ * 		} else if ( ! strcmp( argv[i], "-folder") ) {
+			folderOutput = 1;
+			if ( hasNext && validatePrefix( argv[ next ]) ) {
+				folder_name = argv[ next ];
+				i++;
+			}
+*/
+static int folderOutput     = 0;
+const char *folder_name		= "";
 
 // AlphaNumeric or '-' or '_', NOT starting with '-'
 int validatePrefix( const char *prefix ) {
@@ -3085,7 +3099,21 @@ void snapshot( Mat *frame, const char *prefix, ProcessedThermalFrame *ptf) {
 		rawname[  MAX_PREFIX ] = 0x00;
 		strcat( filename, ".png");
 		strcat( rawname,  ".raw");
-	} else {
+	} else if (folderOutput){
+		char cnt_str[6]="00000";
+		int64_t ct = currentTimeMillis();
+
+		sprintf(cnt_str, "%05d", frame_cnt++);
+
+		sprintf(txt_info,
+				"Avg [C]: %3.2f\nMax [C]: %3.2f\nMin [C]: %3.2f\nContrast: %3.2f\nScale: %d\nMap: %s\nBlur: %d\nTime: %ld\n",
+				ptf->avg.celsius, ptf->max.celsius, ptf->min.celsius, controls.alpha, MyScale, cmaps[controls.cmapCurrent]->name, controls.rad, ct);
+
+		sprintf(filename, "%s/F%s.png", folder_name, cnt_str);
+		sprintf(rawname,  "%s/F%s.tc0", folder_name, cnt_str);
+		sprintf(txtname,  "%s/F%s.txt", folder_name, cnt_str);
+
+	}else {
 		// struct timeval tmnow;
 		// char usec_buf[6]="00000";
 		// //gettimeofday(&tmnow, NULL);
@@ -3096,6 +3124,9 @@ void snapshot( Mat *frame, const char *prefix, ProcessedThermalFrame *ptf) {
 		// , now, usec_buf);
 		// sprintf(rawname,  "%s/TC001%s.%s.raw", startTime, now, usec_buf);
 
+		
+		mkdir(startTime, 0777);
+			
 		char cnt_str[6]="00000";
 		int64_t ct = currentTimeMillis();
 
@@ -3189,11 +3220,13 @@ void printUsage() {
   printf("\n");
   printf( "Camera Usage: \n\t%s -d n (where 'n' is the number of the desired video camera)\n\n", Argv0 );
   printf( "Offline Usage: \n\t%s -f input.raw (where input.raw is a raw dump file from %s)\n\n", Argv0, Argv0 );
-  printf( "Optional flags:  [-rotate n] [-scale n] [-fullscreen ] [-cmap n] [-fps n] [-font n] [-clip n] [-thick n] [-contSnap]\n");
+  printf( "Optional flags:  [-rotate n] [-scale n] [-fullscreen ] [-cmap n] [-fps n] [-font n] [-clip n] [-thick n]\n");
+  printf( "\t\t [-contSnap [-folder name]] - dumping each frame (raw, png, txt) in subfolder\n");
+  printf( "\t\t\t\t\tif folder given subfolder is name, if not folder name is timestamp.\n");  
 #if 0
   printf( "                 [-help] [-quiet] [-snapshot [prefix]] [-record [prefix]]\n\n");
 #else
-  printf( "                 [-help] [-quiet] [-snapshot [prefix]]\n\n");
+  printf( "\n                 [-help] [-quiet] [-snapshot [prefix]]\n\n");
 #endif
 }
 
@@ -4492,14 +4525,14 @@ void *stdinDataThread( void *ptr ) {
 				writeKeyEvent( stdinCharacter );
 			}
 		} else {
-			if ( feof(stdin) ) {
-				printf("\n\n%s(%d) - %sstdin EOF detected%s - exiting\n", 
-					__func__, __LINE__, RED_STR(), RESET_STR() ); 
-				FF();
-				break;
-			}
-			printf("a");
-			sleepMillis(10);
+// 			if ( feof(stdin) ) {
+// 				printf("\n\n%s(%d) - %sstdin EOF detected%s - exiting\n", 
+// 					__func__, __LINE__, RED_STR(), RESET_STR() ); 
+// 				FF();
+// 				break;
+// 			}
+// 			printf("a");
+// 			sleepMillis(10);
 		}
 // Exended ASCII ???
 // keypad arrows ESC(27) + 91 + [65,66,67,68,69]
@@ -5090,7 +5123,6 @@ int parseArgs( int argc, char *argv[], char *camera, VideoCapture &cap, Processe
 		} else if ( ! strcmp( argv[i], "-contSnap")) {
 			cont_snap = 1;
 			startTimeString();
-			mkdir(startTime, 0777);
 //		} else if ( ! strcmp( argv[i], "-videoOnly")) {
 //			vOnly = 1;
 		} else if ( ! strcmp( argv[i], "-snapshot") ) {
@@ -5098,6 +5130,16 @@ int parseArgs( int argc, char *argv[], char *camera, VideoCapture &cap, Processe
 			if ( hasNext && validatePrefix( argv[ next ]) ) {
 				snapshotPrefix = argv[ next ];
 				i++;
+			}
+		} else if ( ! strcmp( argv[i], "-folder") ) {
+			if ( hasNext && validatePrefix( argv[ next ]) ) {
+				folderOutput = 1;
+				folder_name = argv[ next ];
+				i++;
+				
+				cv::utils::fs::createDirectory(folder_name);
+				
+				printf("\nOutput to folder: %s\n", folder_name);
 			}
 		} else if ( ! strcmp( argv[i], "-record") ) {
 			takeRecording = 1;
@@ -5112,6 +5154,9 @@ printf("\n%s-record [prefix] is coming soon ...\n%s", BLUE_STR(), RESET_STR() );
 		} else if ( ! strcmp( argv[i], "-fps") && hasNext ) {
 			offline_fps = abs( atoi( argv[ i + 1 ] ) );
 			i++;
+		/*} else if ( ! strcmp( argv[i], "-folder") && hasNext ) {
+			folder_name = abs( atoi( argv[ i + 1 ] ) );
+			i++;*/
 		} else if ( ! strcmp( argv[i], "-clip") && hasNext ) {
 			rulerBoundFlag = abs( atoi( argv[ i + 1 ] ) ) % BOUND_MAX_MOD;
 			i++;
