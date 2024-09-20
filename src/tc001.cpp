@@ -203,6 +203,57 @@ int64_t currentTimeNanos(){
 #endif
 }
 
+int mkpath(const char *dir, mode_t mode)
+{
+assert(dir && *dir);
+
+    // Skopiuj ścieżkę do zmiennej lokalnej
+    char* path_copy = strdup(dir); // Alokuj pamięć na kopię
+    if (!path_copy) {
+        std::cerr << "Error allocating memory for path copy." << std::endl;
+        return -1; // Błąd alokacji pamięci
+    }
+
+    // Zmienna do iteracji przez znaki
+    for (char* p = path_copy + 1; *p; ++p) {
+        // Jeśli napotkamy '/', to zamień go na '\0' i spróbuj utworzyć katalog
+        if (*p == '/') {
+            *p = '\0'; // Zastąp '/' końcem łańcucha
+
+            // Spróbuj utworzyć katalog
+            if (mkdir(path_copy, mode) == -1) {
+                if (errno != EEXIST) { // Ignoruj, jeśli katalog już istnieje
+                    std::cerr << "Error creating directory: " << path_copy << " - " << strerror(errno) << std::endl;
+                    free(path_copy); // Zwolnij pamięć przed zakończeniem
+                    return -1;
+                } else {
+                    std::cout << "Directory already exists: " << path_copy << std::endl;
+                }
+            } else {
+                std::cout << "Created directory: " << path_copy << std::endl;
+            }
+
+            *p = '/'; // Przywróć znak '/'
+        }
+    }
+
+    // Utwórz ostatni katalog (jeśli nie jest pusty)
+    if (mkdir(path_copy, mode) == -1) {
+        if (errno != EEXIST) {
+            std::cerr << "Error creating directory: " << path_copy << " - " << strerror(errno) << std::endl;
+            free(path_copy); // Zwolnij pamięć przed zakończeniem
+            return -1;
+        } else {
+            std::cout << "Directory already exists: " << path_copy << std::endl;
+        }
+    } else {
+        std::cout << "Created directory: " << path_copy << std::endl;
+    }
+
+    free(path_copy); // Zwolnij pamięć po zakończeniu
+    return 0;
+}
+
 #if 0
 #include <X11/Xlib.h> // Requires -llibX11
 
@@ -289,7 +340,8 @@ int validatePrefix( const char *prefix ) {
 	for ( int i = 0; i < len; i++ ) {
 		if ( ! ( isalnum( prefix[i] ) ||
 			     '-' == prefix[i] ||
-			     '_' == prefix[i] ) ) {
+			     '_' == prefix[i] ||
+				 '/' == prefix[i]) ) {
 			return 0;
 		}
 	}
@@ -5137,7 +5189,8 @@ int parseArgs( int argc, char *argv[], char *camera, VideoCapture &cap, Processe
 				folder_name = argv[ next ];
 				i++;
 				
-				cv::utils::fs::createDirectory(folder_name);
+				mkpath(folder_name, 0777);
+				//cv::utils::fs::createDirectory(folder_name);
 				
 				printf("\nOutput to folder: %s\n", folder_name);
 			}
